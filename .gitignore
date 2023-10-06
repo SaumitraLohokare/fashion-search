@@ -1,0 +1,5 @@
+.venv
+*.json
+*.bin
+*.csv
+*.html
