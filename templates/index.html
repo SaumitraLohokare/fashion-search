@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>URL Search</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        img {
+            padding-right: 4px;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>CL Fashion Search</h1>
+    <form id="search-form">
+        <label for="url">Enter URL:</label>
+        <input type="text" id="url" name="url" required>
+        <button type="submit">Search</button>
+    </form>
+    <hr>
+    <div>
+        <div>
+            <h2>Search Image:</h2>
+            <img id="entered-image" src="" alt="">
+        </div>
+        <h2>Search Results:</h2>
+        <div id="results">
+        </div>
+    </div>
+    <script>
+        document.getElementById('search-form').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const url = document.getElementById('url').value;
+
+            // Display the entered URL image
+            const enteredImage = document.getElementById('entered-image');
+            enteredImage.src = url;
+            enteredImage.alt = 'Entered Image';
+
+            // Send a POST request to the backend
+            fetch('/search', {
+                method: 'POST',
+                body: new URLSearchParams({ 'url': url }),
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+            })
+                .then(response => response.json())
+                .then(data => {
+                    const resultsDiv = document.getElementById('results');
+                    resultsDiv.innerHTML = ''; // Clear previous results
+
+                    // Display the results as image tags
+                    for (const itemName in data) {
+                        if (data.hasOwnProperty(itemName)) {
+                            const imgUrl = data[itemName];
+                            const img = document.createElement('img');
+                            img.src = imgUrl;
+                            img.alt = itemName;
+                            resultsDiv.appendChild(img);
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        });
+    </script>
+</body>
+
+</html>

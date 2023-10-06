@@ -12,10 +12,14 @@ import supervision as sv
 import csv
 import requests
 
+from flask import Flask, render_template, request, jsonify
+
 device = 'cpu'
 torch.set_default_device(device)
 
 dinov2_vits14 = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14")
+
+app = Flask(__name__)
 
 transform_image = T.Compose([T.ToTensor(), T.Resize(244), T.CenterCrop(224), T.Normalize([0.5], [0.5])])
 
@@ -37,35 +41,6 @@ def load_image(url: str) -> torch.Tensor:
 
     return transformed_img
 
-def create_index(files: list) -> faiss.IndexFlatL2:
-    """
-    Create an index that contains all of the images in the specified list of files.
-    """
-    index = faiss.IndexFlatL2(384)
-
-    all_embeddings = {}
-    
-    with torch.no_grad():
-      for name, images in tqdm(files):
-        tqdm.write(f'[INFO] - Processing {name}')
-        all_embeddings[name] = []
-        for file in images:
-            embeddings = dinov2_vits14(load_image(file).to(device))
-            tqdm.write('[INFO] - Generated embeddings')
-            embedding = embeddings[0].cpu().numpy()
-            tqdm.write('[INFO] - Converted embeddings to numpy')
-            all_embeddings[name].append(np.array(embedding).reshape(1, -1).tolist())
-            tqdm.write('[INFO] - Transformed embeddings to list')
-            index.add(np.array(embedding).reshape(1, -1))
-            tqdm.write('[INFO] - Added to index')
-
-    with open("all_embeddings.json", "w") as f:
-        f.write(json.dumps(all_embeddings))
-
-    faiss.write_index(index, "data.bin")
-
-    return index, all_embeddings
-
 def extract_image_urls(csv_file):
     images_metadata = []  # Dictionary to store image URLs for each item
 
@@ -79,10 +54,12 @@ def extract_image_urls(csv_file):
 
     return images_metadata
 
+def load_index(path: str = './data.bin'):
+    return faiss.read_index(path)
 
 files = extract_image_urls('items.csv')[:100]
 
-data_index, all_embeddings = create_index(files)
+data_index = load_index()
 
 def search_index(index: faiss.IndexFlatL2, embeddings: list, k: int = 3) -> list:
     """
@@ -99,11 +76,28 @@ def get_from_files(index: int):
             return name, images[0]
     raise Exception('Index out of range')
 
-with torch.no_grad():
-    embedding = dinov2_vits14(load_image('https://images.craigslist.org/00z0z_1ZngK1zVYsp_0CI0t2_600x450.jpg').to(device))
+@app.route('/')
+def index():
+    return render_template('index.html')
 
-    indices = search_index(data_index, np.array(embedding[0].cpu()).reshape(1, -1))
+@app.route('/search', methods=['POST'])
+def search():
+    url = request.form.get('url')
 
-    for i, index in enumerate(indices):
-        print()
-        print(f"Image {i}: {get_from_files(index)}")
+    try:
+        with torch.no_grad():
+            embedding = dinov2_vits14(load_image(url).to(device))
+
+            indices = search_index(data_index, np.array(embedding[0].cpu()).reshape(1, -1))
+
+            response = {}
+            for i, index in enumerate(indices):
+                print(f"Image {i}: {get_from_files(index)}")
+                name, image = get_from_files(index)
+                response[name] = image
+            return jsonify(response)
+    except:
+        return jsonify({"error": "Failed to load image..."})
+
+if __name__ == '__main__':
+    app.run(debug=True)
